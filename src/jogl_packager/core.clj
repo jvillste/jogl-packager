@@ -3,8 +3,18 @@
   (:import [java.io File]))
 
 (defn package-natives [source-file-prefix target-folder]
-  (for [[source-file-post-fix target-native-folder] [["macosx-universal"
-                                                      "macosx/X86_64"]]]
+  (doseq [[source-file-post-fix target-native-folder] [["macosx-universal"
+                                                        "macosx/X86_64"]
+                                                       ["macosx-universal"
+                                                        "macosx/X86"]
+                                                       ["linux-amd64"
+                                                        "linux/X86_64"]
+                                                       ["linux-i586"
+                                                        "linux/X86"]
+                                                       ["windows-i586"
+                                                        "windows/X86"]
+                                                       ["windows-amd64"
+                                                        "windows/X86_64"]]]
     (let [full-target-native-folder (str target-folder "/native/" target-native-folder)]
       (shell/sh "mkdir" "-p" full-target-native-folder)
       (shell/sh "7z"
@@ -16,7 +26,7 @@
 (defn package-module [package-folder module-name]
   (let [target-folder (str package-folder "/" module-name)]
 
-    (println "packaging " module-name)
+    (println "packaging " target-folder)
     (shell/sh "mkdir" target-folder)
     (shell/sh "7z" "x" (str package-folder "/jogamp-all-platforms/jar/" module-name ".jar") (str "-o" package-folder "/" module-name))
     (package-natives (str package-folder "/jogamp-all-platforms/jar/" module-name)
