@@ -1,6 +1,32 @@
 (ns jogl-packager.core
-  (:require [clojure.java.shell :as shell])
-  (:import [java.io File]))
+  (:require [clojure.java.shell :as shell]
+            [clojure.java.io :as io]
+            [clojure.string :as string])
+  (:import [java.io File]
+           [java.util Properties]))
+
+(def package-folder "temp")
+
+(defn extract-version [module]
+  (let [properties (Properties.)]
+    (.load properties (io/input-stream (str package-folder "/jogamp-all-platforms/jogl.artifact.properties")))
+    (.getProperty properties (case module
+                               :gluegen "gluegen.build.version"
+                               :jogl "jogl.build.version"))))
+
+(defn create-pom [template-file-name]
+  (-> (slurp template-file-name)
+      (string/replace "jogl-version" (extract-version :jogl))
+      (string/replace "gluegen-rt-version" (extract-version :gluegen))
+      (as-> contents
+            (spit (str package-folder "/pom.xml") contents))))
+
+(defn create-gluegen-rt-pom []
+  (-> (slurp "gluegen-rt-pom.xml")
+      (string/replace "jogl-version" (extract-version :jogl))
+      (string/replace "gluegen-rt-version" (extract-version :gluegen))
+      (as-> contents
+            (spit (str package-folder "/pom.xml") contents))))
 
 (defn package-natives [source-file-prefix target-folder]
   (doseq [[source-file-post-fix target-native-folder] [["macosx-universal"
@@ -23,24 +49,49 @@
                 (str "-o" full-target-native-folder))
       (shell/sh "rm" "-r" (str full-target-native-folder "/META-INF")))))
 
-(defn package-module [package-folder module-name]
-  (let [target-folder (str package-folder "/" module-name)]
+(defn module-name [module]
+  (case module
+    :jogl "jogl-all"
+    :gluegen "gluegen-rt"))
+
+(defn package-module [module]
+  (let [module-name (module-name module)
+        target-folder (str package-folder "/" module-name)]
 
     (println "packaging " target-folder)
     (shell/sh "mkdir" target-folder)
     (shell/sh "7z" "x" (str package-folder "/jogamp-all-platforms/jar/" module-name ".jar") (str "-o" package-folder "/" module-name))
     (package-natives (str package-folder "/jogamp-all-platforms/jar/" module-name)
                      target-folder)
-    (shell/sh "zip" "-r" (str module-name ".jar") "." "-i" "*" :dir target-folder)
+    (shell/sh "zip" "-r" (str module-name ".jar") "." "-i" "*" :dir target-folder)))
+
+(defn pom-template [module]
+  (case module
+    :jogl "jogl-all-pom.xml"
+    :gluegen "gluegen-rt-pom.xml"))
+
+(defn install-to-local-repository [module]
+  (let [module-name (module-name module)
+        target-folder (str package-folder "/" module-name)]
 
     (println "installing " module-name)
-    (shell/sh "mvn" "install:install-file" (str "-Dfile=" target-folder "/" module-name ".jar") (str "-DpomFile=" module-name "-pom.xml"))))
+    (create-pom (pom-template module))
+    (shell/sh "mvn" "install:install-file" (str "-Dfile=" target-folder "/" module-name ".jar") (str "-DpomFile=" (str package-folder "/pom.xml")))))
 
+(defn install-to-clojars [module]
+  (let [module-name (module-name module)
+        target-folder (str package-folder "/" module-name)]
+
+    (println "installing to clojars" module-name)
+    (create-pom (pom-template module))
+    (shell/sh "scp"
+              "-q"
+              (str package-folder "/pom.xml")
+              (str target-folder "/" module-name ".jar")
+              "clojars@clojars.org:")))
 
 (defn package []
-  (let [package-folder "temp"]
-
-    (when (.exists (File. package-folder))
+  (when (.exists (File. package-folder))
       (shell/sh "rm" "-r" package-folder))
 
     (shell/sh "mkdir" package-folder)
@@ -57,5 +108,10 @@
               (str package-folder "/jogamp-all-platforms.7z")
               (str "-o" package-folder))
 
-    (package-module package-folder "gluegen-rt")
-    (package-module package-folder "jogl-all")))
+    (package-module :gluegen)
+    (package-module :jogl))
+
+(defn package-and-install-to-clojars []
+  (package)
+  (install-to-clojars :gluegen)
+  (install-to-clojars :jogl))
