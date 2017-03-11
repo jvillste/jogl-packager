@@ -84,11 +84,13 @@
 
     (println "installing to clojars" module-name)
     (create-pom (pom-template module))
-    (shell/sh "scp"
-              "-q"
-              (str package-folder "/pom.xml")
-              (str target-folder "/" module-name ".jar")
-              "clojars@clojars.org:")))
+
+    (shell/sh "mvn"
+              "deploy:deploy-file"
+              (str "-Dfile=" target-folder "/" module-name ".jar")
+              (str "-DpomFile=" package-folder "/pom.xml")
+              "-DrepositoryId=clojars"
+              "-Durl=https://clojars.org/repo")))
 
 (defn package []
   (when (.exists (File. package-folder))
@@ -115,3 +117,5 @@
   (package)
   (install-to-clojars :gluegen)
   (install-to-clojars :jogl))
+
+#_(package-and-install-to-clojars)
