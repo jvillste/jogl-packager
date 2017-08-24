@@ -14,19 +14,24 @@
                                :gluegen "gluegen.build.version"
                                :jogl "jogl.build.version"))))
 
+(defn create-pom-for-versions [template-file-name jogl-version gluegen-rt-version]
+  (-> (slurp template-file-name)
+      (string/replace "jogl-version" jogl-version)
+      (string/replace "gluegen-rt-version" gluegen-rt-version)))
+
 (defn create-pom [template-file-name]
   (-> (slurp template-file-name)
       (string/replace "jogl-version" (extract-version :jogl))
       (string/replace "gluegen-rt-version" (extract-version :gluegen))
       (as-> contents
-            (spit (str package-folder "/pom.xml") contents))))
+          (spit (str package-folder "/pom.xml") contents))))
 
 (defn create-gluegen-rt-pom []
   (-> (slurp "gluegen-rt-pom.xml")
       (string/replace "jogl-version" (extract-version :jogl))
       (string/replace "gluegen-rt-version" (extract-version :gluegen))
       (as-> contents
-            (spit (str package-folder "/pom.xml") contents))))
+          (spit (str package-folder "/pom.xml") contents))))
 
 (defn package-natives [source-file-prefix target-folder]
   (doseq [[source-file-post-fix target-native-folder] [["macosx-universal"
@@ -65,6 +70,52 @@
                      target-folder)
     (shell/sh "zip" "-r" (str module-name ".jar") "." "-i" "*" :dir target-folder)))
 
+(defn sh [& arguments]
+  (println (:out (apply shell/sh arguments))))
+
+
+(defn compile-snapshot [source-folder]
+  (sh "ant" :dir (str source-folder "/jogl/make")))
+
+(defn package-snapshot [source-folder]
+  (let [packaging-folder (str source-folder "/packaging")
+        jogl-all-packaging-folder (str packaging-folder "/jogl-all")
+        jogl-all-native-folder (str jogl-all-packaging-folder )
+        osx-native-folder (str jogl-all-packaging-folder "/native/macosx/X86_64")
+        osx-native-temp-folder (str packaging-folder "/macosx")
+
+        version "2.4.0-SNAPSHOT"
+        jogl-all-jar-file-name (str packaging-folder "/jogl-all-" version ".jar")
+        jogl-all-pom-file-name (str packaging-folder "/jogl-all.pom")
+        gluegen-rt-jar-file-name (str packaging-folder "/glue-rt-" version ".jar")]
+    
+
+    (sh "rm" "-r" packaging-folder)
+    (sh "mkdir" "-p" jogl-all-packaging-folder)
+    (sh "unzip" (str source-folder  "/jogl/build/jar/jogl-all.jar") :dir jogl-all-packaging-folder)
+
+
+    (sh "mkdir" "-p" osx-native-temp-folder)
+    (sh "unzip" (str source-folder "/jogl/build/jar/jogl-all-natives-macosx-universal.jar") :dir osx-native-temp-folder)
+
+    (sh "mkdir" "-p" osx-native-folder)
+    (sh "cp" "-r" (str osx-native-temp-folder "/natives/macosx-universal/") (str osx-native-folder "/"))
+    
+    (shell/sh "zip" "-r" jogl-all-jar-file-name "." "-i" "*" :dir jogl-all-packaging-folder)
+
+    (spit jogl-all-pom-file-name (create-pom-for-versions "jogl-all-pom.xml" version version))
+    (sh "mvn" "install:install-file" (str "-Dfile=" jogl-all-jar-file-name) (str "-DpomFile=" jogl-all-pom-file-name))
+
+    #_(shell/sh "zip" "-r"  gluegen-rt-jar-file-name "." "-i" "*" :dir (str packaging-folder "/gluegen-rt"))
+    #_(sh "mvn" "install:install-file" (str "-Dfile=" gluegen-rt-jar-file-name) (str "-DpomFile=" (str packaging-folder "/gluegen-rt-" version ".pom")))))
+
+(comment
+  (let [source-folder "/Users/jukka/src/others/jogl"]
+    #_(compile-snapshot source-folder)
+    (package-snapshot source-folder))
+  
+  )
+
 (defn pom-template [module]
   (case module
     :jogl "jogl-all-pom.xml"
@@ -85,33 +136,38 @@
     (println "installing to clojars" module-name)
     (create-pom (pom-template module))
 
+    #_(shell/sh "mvn"
+                "deploy:deploy-file"
+                (str "-Dfile=" target-folder "/" module-name ".jar")
+                (str "-DpomFile=" package-folder "/pom.xml")
+                "-DrepositoryId=clojars"
+                "-Durl=https://clojars.org/repo")
+
     (shell/sh "mvn"
-              "deploy:deploy-file"
+              "install:install-file"
               (str "-Dfile=" target-folder "/" module-name ".jar")
-              (str "-DpomFile=" package-folder "/pom.xml")
-              "-DrepositoryId=clojars"
-              "-Durl=https://clojars.org/repo")))
+              (str "-DpomFile=" package-folder "/pom.xml"))))
 
 (defn package []
   (when (.exists (File. package-folder))
-      (shell/sh "rm" "-r" package-folder))
+    (shell/sh "rm" "-r" package-folder))
 
-    (shell/sh "mkdir" package-folder)
+  (shell/sh "mkdir" package-folder)
 
-    (println "downloading jogl")
-    (shell/sh "curl"
-              "http://jogamp.org/deployment/jogamp-current/archive/jogamp-all-platforms.7z"
-              "-o"
-              (str package-folder "/jogamp-all-platforms.7z"))
+  (println "downloading jogl")
+  (shell/sh "curl"
+            "http://jogamp.org/deployment/jogamp-current/archive/jogamp-all-platforms.7z"
+            "-o"
+            (str package-folder "/jogamp-all-platforms.7z"))
 
-    (println "extracting jogl")
-    (shell/sh "7z"
-              "x"
-              (str package-folder "/jogamp-all-platforms.7z")
-              (str "-o" package-folder))
+  (println "extracting jogl")
+  (shell/sh "7z"
+            "x"
+            (str package-folder "/jogamp-all-platforms.7z")
+            (str "-o" package-folder))
 
-    (package-module :gluegen)
-    (package-module :jogl))
+  (package-module :gluegen)
+  (package-module :jogl))
 
 (defn package-and-install-to-clojars []
   (package)
