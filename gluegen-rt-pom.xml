@@ -8,7 +8,7 @@
   <name>gluegen-rt</name>
   <description>Repackaged jogamp.org GlueGen jogl-version with lein compatible natives for OSX, Linux/Windows x86/86_64</description>
   <url>http://jogamp.org</url>
-      
+
   <repositories/>
   <dependencies/>
 </project>

@@ -127,7 +127,10 @@
 
     (println "installing " module-name)
     (create-pom (pom-template module))
-    (shell/sh "mvn" "install:install-file" (str "-Dfile=" target-folder "/" module-name ".jar") (str "-DpomFile=" (str package-folder "/pom.xml")))))
+    (shell/sh "mvn"
+              "install:install-file"
+              (str "-Dfile=" target-folder "/" module-name ".jar")
+              (str "-DpomFile=" (str package-folder "/pom.xml")))))
 
 (defn install-to-clojars [module]
   (let [module-name (module-name module)
@@ -136,17 +139,12 @@
     (println "installing to clojars" module-name)
     (create-pom (pom-template module))
 
-    #_(shell/sh "mvn"
-                "deploy:deploy-file"
-                (str "-Dfile=" target-folder "/" module-name ".jar")
-                (str "-DpomFile=" package-folder "/pom.xml")
-                "-DrepositoryId=clojars"
-                "-Durl=https://clojars.org/repo")
-
     (shell/sh "mvn"
-              "install:install-file"
+              "deploy:deploy-file"
               (str "-Dfile=" target-folder "/" module-name ".jar")
-              (str "-DpomFile=" package-folder "/pom.xml"))))
+              (str "-DpomFile=" package-folder "/pom.xml")
+              "-DrepositoryId=clojars"
+              "-Durl=https://clojars.org/repo")))
 
 (defn package []
   (when (.exists (File. package-folder))
@@ -156,7 +154,7 @@
 
   (println "downloading jogl")
   (shell/sh "curl"
-            "http://jogamp.org/deployment/jogamp-current/archive/jogamp-all-platforms.7z"
+            "https://jogamp.org/deployment/jogamp-current/archive/jogamp-all-platforms.7z"
             "-o"
             (str package-folder "/jogamp-all-platforms.7z"))
 
@@ -174,4 +172,6 @@
   (install-to-clojars :gluegen)
   (install-to-clojars :jogl))
 
-#_(package-and-install-to-clojars)
+(comment
+  (package-and-install-to-clojars)
+  )
